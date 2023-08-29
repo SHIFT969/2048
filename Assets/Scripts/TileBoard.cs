@@ -1,9 +1,13 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class TileBoard : MonoBehaviour
 {
+    public GameManager gameManager;
+
     public Tile tilePrefab;
 
     private TileGrid grid;
@@ -20,13 +24,22 @@ public class TileBoard : MonoBehaviour
         tiles = new List<Tile>(16);
     }
 
-    private void Start()
+    public void ClearBoard()
     {
-        CreateTile();
-        CreateTile();
+        foreach (var cell in grid.cells)
+        {
+            cell.tile = null;
+        }
+
+        foreach (var tile in tiles)
+        {
+            Destroy(tile.gameObject);
+        }
+
+        tiles.Clear();
     }
 
-    private void CreateTile()
+    public void CreateTile()
     {
         var tile = Instantiate(tilePrefab, grid.transform);
         tile.SetState(tileStates[0], 2);
@@ -79,7 +92,11 @@ public class TileBoard : MonoBehaviour
         {
             if (adjacent.occupied)
             {
-                // todo merging
+                if (CanMerge(tile, adjacent.tile))
+                {
+                    Merge(tile, adjacent.tile);
+                    return true;
+                }
                 break;
             }
 
@@ -96,6 +113,34 @@ public class TileBoard : MonoBehaviour
         return false;
     }
 
+    private void Merge(Tile a, Tile b)
+    {
+        tiles.Remove(a);
+        a.Merge(b.cell);
+
+        var index = Mathf.Clamp(IndexOf(b.state) + 1, 0 , tileStates.Length - 1);
+        var number = b.number * 2;
+
+        b.SetState(tileStates[index], number);
+    }
+
+    private int IndexOf(TileState state)
+    {
+        for (int i = 0; i < tileStates.Length; i++)
+        {
+            if (state == tileStates[i]) {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private bool CanMerge(Tile a, Tile b)
+    {
+        return a.number == b.number && !b.locked;
+    }
+
     private IEnumerator WaitForChanges()
     {
         waiting = true;
@@ -103,5 +148,42 @@ public class TileBoard : MonoBehaviour
         yield return new WaitForSeconds(0.1f);
 
         waiting = false;
+
+        foreach (var tile in tiles)
+        {
+            tile.locked = false;
+        }
+
+        if (tiles.Count < grid.size) {
+            CreateTile();
+        }
+
+        if (CheckForGameOver()) {
+            gameManager.GameOver();
+        }
+    }
+
+    private bool CheckForGameOver()
+    {
+        if (tiles.Count < grid.size) {
+            return false;
+        }
+
+        foreach (var tile in tiles)
+        {
+            var up = grid.GetAdjacentCell(tile.cell, Vector2Int.up);
+            var down = grid.GetAdjacentCell(tile.cell, Vector2Int.down);
+            var left = grid.GetAdjacentCell(tile.cell, Vector2Int.left);
+            var right = grid.GetAdjacentCell(tile.cell, Vector2Int.right);
+
+            if ((up != null && CanMerge(tile, up.tile))
+                || (down != null && CanMerge(tile, down.tile))
+                || (left != null && CanMerge(tile, left.tile))
+                || (right != null && CanMerge(tile, right.tile))) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
